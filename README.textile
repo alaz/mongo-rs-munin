@@ -2,10 +2,12 @@ h2. mongo_repl_lag
 
 **mongo_repl_lag** is a "Munin":http://munin.projects.linpro.no/ plugin to show graphs how large the replication lag is (in seconds) per MongoDB secondary node. It requires _pymongo_.
 
-Configuration settings:
+Configuration settings (through Munin plugin config):
 
-* @HOST@ MongoDB node host
-* @PORT@ MongoDB node port
+* @host@ MongoDB node host
+* @port@ MongoDB node port
+* @repl_lag.warning@ warning lag (in ms)
+* @repl_lag.critical@ critical lag (in ms)
 
 By default the plugin will connect to @localhost:27017@.
 

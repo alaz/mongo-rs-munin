@@ -9,11 +9,11 @@ except:
     print "need to install pymongo"
     sys.exit(2)
 
-host = os.environ.get('HOST', 'localhost')
-port = os.environ.get('PORT', 27017)
+host = os.environ.get('host', 'localhost')
+port = os.environ.get('port', 27017)
 
 def escape_munin(s):
-    return re.sub('[-.]', '_', s)
+    return '_'+re.sub('[-.]', '_', s)
 
 def get_master():
     con = pymongo.Connection(host, port, slave_okay=True)
@@ -33,6 +33,9 @@ def do_config():
     print "graph_args --lower-limit 0"
     print "graph_scale no"
 
+    warning = os.environ.get("repl_lag.warning")
+    critical = os.environ.get("repl_lag.critical")
+
     slaves = con.local.slaves.find()
     for slave in slaves:
         host = slave['host']
@@ -40,6 +43,10 @@ def do_config():
         print "%s.label %s" % (escaped_host, host)
         print "%s.type GAUGE" % escaped_host
         print "%s.min 0" % escaped_host
+        if warning != None:
+            print "%s.warning %s" % (escaped_host, warning)
+        if critical != None:
+            print "%s.critical %s" % (escaped_host, critical)
 
 def do_data():
     con = get_master()
