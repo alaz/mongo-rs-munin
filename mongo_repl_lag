@@ -1,0 +1,60 @@
+#!/usr/bin/env python
+import os
+import sys
+import re
+
+try:
+    import pymongo
+except:
+    print "need to install pymongo"
+    sys.exit(2)
+
+host = os.environ.get('HOST', 'localhost')
+port = os.environ.get('PORT', 27017)
+
+def escape_munin(s):
+    return re.sub('[-.]', '_', s)
+
+def get_master():
+    con = pymongo.Connection(host, port, slave_okay=True)
+
+    isMasterStatus = con.admin.command("ismaster", "1")
+    if not isMasterStatus['ismaster']:
+        primary = isMasterStatus['primary']
+        con = pymongo.Connection("mongodb://"+primary)
+    return con
+
+def do_config():
+    con = get_master()
+
+    print "graph_title Replication lag"
+    print "graph_vlabel Lag, seconds"
+    print "graph_category MongoDB"
+    print "graph_args --lower-limit 0"
+    print "graph_scale no"
+
+    slaves = con.local.slaves.find()
+    for slave in slaves:
+        host = slave['host']
+        escaped_host = escape_munin(host)
+        print "%s.label %s" % (escaped_host, host)
+        print "%s.type GAUGE" % escaped_host
+        print "%s.min 0" % escaped_host
+
+def do_data():
+    con = get_master()
+
+    masterOpLog = con.local['oplog.rs']
+    lastMasterOpTime = masterOpLog.find_one(sort=[('$natural', -1)])['ts'].time
+    slaves = con.local.slaves.find()
+
+    for slave in slaves:
+        lastSlaveOpTime = slave['syncedTo'].time
+        replicationLag = lastMasterOpTime - lastSlaveOpTime
+        print "%s.value %s" % (escape_munin(slave['host']), replicationLag)
+
+if __name__ == '__main__':
+    if len(sys.argv) > 1 and sys.argv[1] == 'config':
+        do_config()
+    else:
+        do_data()
