@@ -28,7 +28,7 @@ def do_config():
     con = get_master()
 
     print "graph_title Replication lag"
-    print "graph_vlabel Lag, seconds"
+    print "graph_vlabel ms"
     print "graph_category MongoDB"
     print "graph_args --lower-limit 0"
     print "graph_scale no"
