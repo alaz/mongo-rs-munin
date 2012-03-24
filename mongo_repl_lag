@@ -12,6 +12,8 @@ except:
 host = os.environ.get('host', 'localhost')
 port = os.environ.get('port', 27017)
 
+hostOnly = re.compile("^(.*):\d+$")
+
 def escape_munin(s):
     return '_'+re.sub('[-.]', '_', s)
 
@@ -23,6 +25,11 @@ def get_master():
         primary = isMasterStatus['primary']
         con = pymongo.Connection("mongodb://"+primary)
     return con
+
+def get_hosts(con):
+    replset = con.local['system.replset']
+    return [hostOnly.match(member['host']).group(1) for member in replset.find_one()['members']
+            if member.get('arbiterOnly', None) == None]
 
 def do_config():
     con = get_master()
@@ -36,7 +43,7 @@ def do_config():
     warning = os.environ.get("repl_lag.warning")
     critical = os.environ.get("repl_lag.critical")
 
-    slaves = con.local.slaves.find()
+    slaves = con.local.slaves.find({'host': {'$in': get_hosts(con)}})
     for slave in slaves:
         host = slave['host']
         escaped_host = escape_munin(host)
@@ -53,8 +60,8 @@ def do_data():
 
     masterOpLog = con.local['oplog.rs']
     lastMasterOpTime = masterOpLog.find_one(sort=[('$natural', -1)])['ts'].time
-    slaves = con.local.slaves.find()
 
+    slaves = con.local.slaves.find({'host': {'$in': get_hosts(con)}})
     for slave in slaves:
         lastSlaveOpTime = slave['syncedTo'].time
         replicationLag = lastMasterOpTime - lastSlaveOpTime
