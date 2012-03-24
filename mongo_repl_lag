@@ -12,8 +12,6 @@ except:
 host = os.environ.get('host', 'localhost')
 port = os.environ.get('port', 27017)
 
-hostOnly = re.compile("^(.*):\d+$")
-
 def escape_munin(s):
     return '_'+re.sub('[-.]', '_', s)
 
@@ -27,6 +25,7 @@ def get_master():
     return con
 
 def get_hosts(con):
+    hostOnly = re.compile("^(.*):\d+$")
     replset = con.local['system.replset']
     return [hostOnly.match(member['host']).group(1) for member in replset.find_one()['members']
             if member.get('arbiterOnly', None) == None]
