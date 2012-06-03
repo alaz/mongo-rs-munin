@@ -4,8 +4,9 @@ h2. mongo_repl_lag
 
 Configuration settings (through Munin plugin config):
 
-* @host@ MongoDB node host
-* @port@ MongoDB node port
+* @host@ MongoDB node host (optional, defaults to `localhost`)
+* @port@ MongoDB node port (optional, defaults to `27017`)
+* @replicaSet@ MongoDB Replica Set name (optional, you would need it if **mongo_repl_lag** is installed at *arbiter* because of [PYTHON-339](https://jira.mongodb.org/browse/PYTHON-339) issue)
 * @repl_lag.warning@ warning lag (in ms)
 * @repl_lag.critical@ critical lag (in ms)
 
