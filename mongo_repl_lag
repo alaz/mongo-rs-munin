@@ -9,33 +9,28 @@ except:
     print "need to install pymongo"
     sys.exit(2)
 
-host = os.environ.get('host', 'localhost')
-port = os.environ.get('port', 27017)
+uri = os.environ.get('uri', 'localhost:27017')
 rsName = os.environ.get('replicaSet')
+
+hostOnly = re.compile("^(.*):\d+$")
 
 def escape_munin(s):
     return '_'+re.sub('[-.]', '_', s)
 
-def get_master():
+def get_conn():
     kwargs = {"read_preference": pymongo.ReadPreference.SECONDARY}
     if rsName != None:
         kwargs["replicaSet"] = rsName
-    con = pymongo.Connection(host, port, **kwargs)
-
-    isMasterStatus = con.admin.command("ismaster", "1")
-    if not isMasterStatus['ismaster']:
-        primary = isMasterStatus['primary']
-        con = pymongo.Connection("mongodb://"+primary)
+    con = pymongo.MongoReplicaSetClient(uri, **kwargs)
     return con
 
-def get_hosts(con):
-    hostOnly = re.compile("^(.*):\d+$")
-    replset = con.local['system.replset']
-    return [hostOnly.match(member['host']).group(1) for member in replset.find_one()['members']
-            if member.get('arbiterOnly', None) == None]
+def get_members():
+    con = get_conn()
+    rs_status = con.admin.command("replSetGetStatus")
+    return [member for member in rs_status["members"] if member["state"] in (1,2,3)]
 
 def do_config():
-    con = get_master()
+    members = get_members()
 
     print "graph_title Replication lag"
     print "graph_vlabel ms"
@@ -46,29 +41,35 @@ def do_config():
     warning = os.environ.get("repl_lag.warning")
     critical = os.environ.get("repl_lag.critical")
 
-    slaves = con.local.slaves.find({'host': {'$in': get_hosts(con)}})
-    for slave in slaves:
-        host = slave['host']
-        escaped_host = escape_munin(host)
-        print "%s.label %s" % (escaped_host, host)
-        print "%s.type GAUGE" % escaped_host
-        print "%s.min 0" % escaped_host
-        if warning != None:
-            print "%s.warning %s" % (escaped_host, warning)
-        if critical != None:
-            print "%s.critical %s" % (escaped_host, critical)
+    for m in members:
+        if m["state"] != 1:
+            host = hostOnly.match(m['name']).group(1)
+            escaped_host = escape_munin(host)
+            print "%s.label %s" % (escaped_host, host)
+            print "%s.type GAUGE" % escaped_host
+            print "%s.min 0" % escaped_host
+            if warning != None:
+                print "%s.warning %s" % (escaped_host, warning)
+            if critical != None:
+                print "%s.critical %s" % (escaped_host, critical)
+
+def get_primary_optime(con):
+    rs_status = con.admin.command("replSetGetStatus")
+    return [member["optime"] for member in rs_status["members"] if member["state"] == 1][0]
 
 def do_data():
-    con = get_master()
+    members = get_members()
 
-    masterOpLog = con.local['oplog.rs']
-    lastMasterOpTime = masterOpLog.find_one(sort=[('$natural', -1)])['ts'].time
+    master = [m for m in members if m["state"] == 1][0]
+    masterOptime = master["optime"].time
 
-    slaves = con.local.slaves.find({'host': {'$in': get_hosts(con)}})
-    for slave in slaves:
-        lastSlaveOpTime = slave['syncedTo'].time
-        replicationLag = lastMasterOpTime - lastSlaveOpTime
-        print "%s.value %s" % (escape_munin(slave['host']), replicationLag)
+    for m in members:
+        if m["state"] != 1:
+            host = hostOnly.match(m['name']).group(1)
+            escaped_host = escape_munin(host)
+            slaveOptime = m["optime"].time
+            replicationLag = masterOptime - slaveOptime
+            print "%s.value %s" % (escaped_host, replicationLag)
 
 if __name__ == '__main__':
     if len(sys.argv) > 1 and sys.argv[1] == 'config':
